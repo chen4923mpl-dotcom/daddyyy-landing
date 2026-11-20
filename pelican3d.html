@@ -192,40 +192,132 @@ for (let i = 0; i < 2; i++) {
   box(p, M.black, [0, 0, 0], [.20, .055, .23]);
 }
 
-// Pelican silhouette: broad belly, folded dark-tipped wings, S neck, and long bill.
+// A single loft carries the body seamlessly through the S-shaped neck and head.
 const bird = new THREE.Group(); bike.add(bird);
-ellipsoid(bird, M.white, [-.49, 2.79, 0], [.68, .54, .43]);
-ellipsoid(bird, M.feather, [-.18, 2.68, 0], [.43, .37, .36]);
-const tail = ellipsoid(bird, M.white, [-1.14, 2.82, 0], [.43, .14, .25]); tail.rotation.z = -.28;
+// Each profile is [height radius, side-to-side radius] at its matching curve point.
+function smoothLoft(points, profile, material, longitudinal = 120, radial = 20) {
+  const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p[0], p[1], 0)), false, 'catmullrom', .35);
+  const vertices = [], indices = [];
+  for (let i = 0; i <= longitudinal; i++) {
+    const t = i / longitudinal;
+    const p = curve.getPoint(t), tangent = curve.getTangent(t).normalize();
+    const normal = new THREE.Vector3(-tangent.y, tangent.x, 0).normalize();
+    const at = t * (profile.length - 1), k = Math.min(profile.length - 2, Math.floor(at));
+    const f0 = at - k, f = f0 * f0 * (3 - 2 * f0);
+    const height = THREE.MathUtils.lerp(profile[k][0], profile[k + 1][0], f);
+    const width = THREE.MathUtils.lerp(profile[k][1], profile[k + 1][1], f);
+    for (let j = 0; j <= radial; j++) {
+      const a = j / radial * Math.PI * 2;
+      vertices.push(
+        p.x + normal.x * Math.cos(a) * height,
+        p.y + normal.y * Math.cos(a) * height,
+        Math.sin(a) * width
+      );
+      if (i < longitudinal && j < radial) {
+        const n = i * (radial + 1) + j;
+        indices.push(n, n + 1, n + radial + 1, n + 1, n + radial + 2, n + radial + 1);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return mesh(geometry, material, bird);
+}
+
+// The breast narrows into a plump-based, slim-crowned neck, then flows into the head.
+smoothLoft(
+  [
+    [-1.56,2.78],[-1.30,2.79],[-.91,2.79],[-.49,2.80],[-.16,2.88],
+    [.08,3.02],[.15,3.19],[.13,3.34],[-.015,3.48],[.06,3.59],
+    [.26,3.69],[.48,3.70],[.68,3.68]
+  ],
+  [
+    [.004,.006],[.20,.18],[.36,.32],[.47,.39],[.39,.34],
+    [.30,.27],[.235,.215],[.19,.18],[.17,.165],[.18,.17],
+    [.22,.205],[.18,.17],[.006,.008]
+  ], M.white, 180, 28
+);
+
+// Folded wings are shallow, body-hugging feather surfaces rather than loose lumps.
+const wingMaterial = new THREE.MeshStandardMaterial({ color: '#eee7d8', roughness: .88, side: THREE.DoubleSide });
+const covertMaterial = new THREE.MeshStandardMaterial({ color: '#f6f0e3', roughness: .9, side: THREE.DoubleSide });
+const flightMaterial = new THREE.MeshStandardMaterial({ color: '#b9b4a8', roughness: .94, side: THREE.DoubleSide });
+function bodySide(x, y, sign, lift = .009) {
+  const u = (x + .52) / 1.11, v = (y - 2.80) / .49;
+  return sign * (.395 * Math.sqrt(Math.max(.025, 1 - u*u - v*v)) + lift);
+}
+function wingPatch(sign, startX, endX, spanScale, centerLift, material) {
+  const nx = 38, ny = 12, vertices = [], indices = [];
+  for (let i = 0; i <= nx; i++) {
+    const t = i / nx, x = THREE.MathUtils.lerp(startX, endX, t);
+    const span = Math.sin(Math.PI * t) * .205 * spanScale * (1 - .10 * t);
+    const centerY = 2.78 + .035 * t;
+    for (let j = 0; j <= ny; j++) {
+      const across = j / ny * 2 - 1, y = centerY + across * span;
+      vertices.push(x, y, bodySide(x, y, sign, centerLift));
+      if (i < nx && j < ny) {
+        const n = i * (ny + 1) + j;
+        indices.push(n, n + ny + 1, n + 1, n + 1, n + ny + 1, n + ny + 2);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  mesh(geometry, material, bird);
+}
 for (const sign of [-1, 1]) {
-  const wing = ellipsoid(bird, M.wing, [-.61, 2.84, sign * .35], [.51, .31, .12]); wing.rotation.z = .2;
-  for (let i = 0; i < 5; i++) {
-    const feather = ellipsoid(bird, i > 2 ? M.black : M.feather, [-.84 - i * .055, 2.77 - i * .024, sign * (.385 + i * .005)], [.23, .065, .04]);
-    feather.rotation.z = .28 + i * .07;
+  wingPatch(sign, -1.34, -.10, 1, .014, wingMaterial);
+  wingPatch(sign, -1.12, -.27, .61, .025, covertMaterial);
+  // A few restrained flight-feather ends peek out at the rear of each folded wing.
+  for (let i = 0; i < 4; i++) {
+    const bx = -1.20 + i * .065, by = 2.72 + i * .052;
+    const tx = -1.47 + i * .025, ty = by + .018;
+    const mx = (bx + tx) * .5, my = (by + ty) * .5;
+    const vertices = [
+      bx, by, bodySide(bx, by, sign, .018),
+      mx, my + .018, bodySide(mx, my + .018, sign, .019),
+      tx, ty, bodySide(tx, ty, sign, .02),
+      mx, my - .018, bodySide(mx, my - .018, sign, .019)
+    ];
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex([0,1,2, 0,2,3]);
+    geometry.computeVertexNormals();
+    mesh(geometry, flightMaterial, bird);
   }
 }
-ellipsoid(bird, M.white, [-.02, 3.05, 0], [.29, .48, .27]).rotation.z = -.3;
-ellipsoid(bird, M.white, [.07, 3.4, 0], [.20, .44, .21]).rotation.z = .18;
-ellipsoid(bird, M.white, [.26, 3.71, 0], [.34, .29, .255]);
-// Flattened tapered cones, rotated so their tips face down the road.
-const bill = mesh(new THREE.ConeGeometry(1, 1, 4), M.bill, bird);
-bill.rotation.z = -Math.PI / 2; bill.rotation.x = Math.PI / 4;
-bill.position.set(.99, 3.65, 0); bill.scale.set(.18, 1.13, .18);
-const pouch = ellipsoid(bird, M.pouch, [.82, 3.49, 0], [.48, .18, .14]); pouch.rotation.z = .10;
-rod(bird, M.orange, [.46, 3.62, .137], [1.48, 3.62, .015], .011);
-rod(bird, M.orange, [.46, 3.62, -.137], [1.48, 3.62, -.015], .011);
-for (const sign of [-1,1]) {
-  ellipsoid(bird, M.iris, [.37, 3.79, sign * .234], [.105, .105, .025]);
-  ellipsoid(bird, M.eye, [.39, 3.80, sign * .255], [.055, .06, .018]);
-  ellipsoid(bird, M.white, [.405, 3.823, sign * .269], [.017, .018, .009]);
-  const brow = ellipsoid(bird, M.white, [.35, 3.89, sign * .224], [.13, .04, .035]); brow.rotation.z = -.12;
-}
-for (let i = 0; i < 3; i++) ellipsoid(bird, M.feather, [.04 - .07 * i, 3.96 + .02 * i, 0], [.14, .035, .10]).rotation.z = -.28;
-// Small forward feathers suggest the wings bracing on the handlebar.
+
+// The broad, flattened upper bill stays almost level before its small hooked tip.
+const billMaterial = mat('#e9a63b', .58);
+smoothLoft(
+  [[.49,3.704],[.83,3.70],[1.25,3.66],[1.64,3.62],[1.88,3.585],[2.015,3.50]],
+  [[.043,.088],[.043,.087],[.034,.071],[.024,.050],[.019,.034],[.003,.006]],
+  billMaterial, 100, 16
+);
+const pouchMaterial = mat('#df8746', .72);
+smoothLoft(
+  [[.55,3.61],[.72,3.535],[.99,3.445],[1.27,3.465],[1.48,3.535],[1.58,3.585]],
+  [[.004,.006],[.072,.071],[.145,.12],[.125,.108],[.065,.065],[.004,.006]],
+  pouchMaterial, 90, 20
+);
+
+// Small side patches and dark eyes sit naturally on the head; a short rear crest breaks its outline.
+const facePatch = mat('#dca35f', .82);
 for (const sign of [-1, 1]) {
-  rod(bird, M.feather, [-.13, 2.97, sign * .30], [.48, 2.58, sign * .4], .085);
-  ellipsoid(bird, M.white, [.61, 2.54, sign * .41], [.21, .075, .09]);
+  ellipsoid(bird, facePatch, [.34,3.775,sign*.198], [.069,.051,.014]);
+  ellipsoid(bird, M.eye, [.35,3.78,sign*.211], [.029,.031,.012]);
+  ellipsoid(bird, M.white, [.357,3.792,sign*.222], [.008,.009,.006]);
 }
+for (let i = 0; i < 5; i++) {
+  const feather = ellipsoid(bird, i % 2 ? M.white : M.feather,
+    [.105 - i*.036, 3.905 + (i%2)*.018, (i-2)*.034], [.115,.025,.027]);
+  feather.rotation.z = -.17 + i*.07;
+}
+
 
 // Each leg is a two-segment IK chain, solved against its actual pedal position.
 const legs = [];
