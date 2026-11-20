@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pelican coast cruise</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #d9e8df; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #183f42; }
+  canvas { display: block; touch-action: none; }
+  .title { position: absolute; top: 36px; left: 38px; pointer-events: none; }
+  .eyebrow { text-transform: uppercase; font-size: 11px; font-weight: 750; letter-spacing: .25em; }
+  h1 { font-size: clamp(29px, 5vw, 53px); margin: 9px 0 8px; font-weight: 750; letter-spacing: -.055em; line-height: 1.05; }
+  .title p { font-size: 13px; margin: 0; opacity: .7; }
+  .controls { position: absolute; bottom: 27px; left: 32px; right: 32px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .pill { border: 1px solid #ffffffaa; background: #f6faf2d9; backdrop-filter: blur(12px); padding: 11px 17px; border-radius: 30px; box-shadow: 0 3px 20px #144c4410; font-size: 12px; }
+  button { color: inherit; font: inherit; cursor: pointer; }
+  button:hover { background: white; }
+  .hint { margin-left: auto; font-size: 11px; letter-spacing: .03em; opacity: .7; }
+  .status { position: absolute; inset: 45% 12% auto; text-align: center; font-size: 14px; }
+  @media (max-width: 600px) { .title { top: 25px; left: 24px; } .controls { left: 20px; right: 20px; bottom: 20px; gap: 8px; } .hint { width: 100%; margin-left: 0; } }
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div class="title"><div class="eyebrow">Little journeys / No. 03</div><h1>Coasting along.</h1><p>One pelican. Two wheels. Absolutely nowhere to be.</p></div>
+<div class="controls"><button class="pill" id="pause">Pause ride</button><button class="pill" id="orbit">Auto orbit: off</button><span class="pill">COAST ROAD &nbsp; / &nbsp; 12 km/h</span><span class="hint">Drag to orbit · Scroll to zoom · Space to pause</span></div>
+<div class="status" id="status">Getting the wheels turning…</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#dae9df');
+scene.fog = new THREE.Fog('#dae9df', 23, 65);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.18;
+document.body.prepend(renderer.domElement);
+const camera = new THREE.PerspectiveCamera(41, innerWidth / innerHeight, .1, 130);
+camera.position.set(6.4, 4.2, 8.6);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.9, 0);
+controls.enableDamping = true;
+controls.minDistance = 5;
+controls.maxDistance = 20;
+controls.maxPolarAngle = Math.PI * .48;
+controls.autoRotateSpeed = .65;
+scene.add(new THREE.HemisphereLight('#fff4d9', '#6d9590', 2.4));
+const sun = new THREE.DirectionalLight('#fff1cd', 3.4);
+sun.position.set(-3, 9, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 9, bottom: -9, near: 1, far: 30 });
+sun.shadow.normalBias = .035;
+scene.add(sun);
+
+const mat = (color, roughness = .75, metalness = 0) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
+const M = {
+  white: mat('#fff8e6'), feather: mat('#eee6d2'), wing: mat('#e4dbc4'), black: mat('#263c40'),
+  orange: mat('#f5ae43'), bill: mat('#f6c363'), pouch: mat('#efaa61'), eye: mat('#112c32', .22),
+  iris: mat('#94b7b7'), frame: mat('#218b87', .32, .35), lightFrame: mat('#6cc3ad', .35, .25),
+  metal: mat('#c2d4d0', .28, .7), tire: mat('#293c40'), rim: mat('#e9d9aa', .55),
+  seat: mat('#a4593e'), road: mat('#6c8886'), sand: mat('#e7dcb5'), grass: mat('#9dbca0'),
+  water: mat('#80bdb6', .42), stripe: mat('#e1dec2'), trunk: mat('#9a7e59'), leaf: mat('#5f987a'),
+  leafLight: mat('#88b18a'), flower: mat('#ffe2a0'), stone: mat('#b8c1aa')
+};
+const sphereGeo = new THREE.SphereGeometry(1, 24, 16);
+const cylinderGeo = new THREE.CylinderGeometry(1, 1, 1, 12);
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+function mesh(geo, material, parent = scene) {
+  const o = new THREE.Mesh(geo, material);
+  o.castShadow = true; o.receiveShadow = true; parent.add(o); return o;
+}
+function ellipsoid(parent, material, position, scale) {
+  const o = mesh(sphereGeo, material, parent); o.position.set(...position); o.scale.set(...scale); return o;
+}
+function box(parent, material, position, scale) {
+  const o = mesh(boxGeo, material, parent); o.position.set(...position); o.scale.set(...scale); return o;
+}
+const up = new THREE.Vector3(0, 1, 0);
+function setRod(o, a, b, radius) {
+  const delta = new THREE.Vector3().subVectors(b, a);
+  o.position.copy(a).add(b).multiplyScalar(.5);
+  o.scale.set(radius, delta.length(), radius);
+  o.quaternion.setFromUnitVectors(up, delta.normalize());
+}
+function rod(parent, material, a, b, radius = .045) {
+  const o = mesh(cylinderGeo, material, parent);
+  setRod(o, new THREE.Vector3(...a), new THREE.Vector3(...b), radius); return o;
+}
+function torus(parent, material, radius, tube, x, y, z) {
+  const o = mesh(new THREE.TorusGeometry(radius, tube, 10, 64), material, parent);
+  o.position.set(x, y, z); return o;
+}
+
+// The road and shore stay beneath the rider; repeating details travel backwards.
+box(scene, M.grass, [0, -.19, 0], [180, .3, 100]);
+box(scene, M.sand, [0, -.08, -9], [180, .16, 10]);
+box(scene, M.water, [0, -.09, -33], [180, .12, 39]);
+box(scene, M.road, [0, -.025, .1], [180, .1, 4.6]);
+box(scene, M.stripe, [0, .031, -2.04], [180, .009, .055]);
+box(scene, M.stripe, [0, .031, 2.24], [180, .009, .055]);
+const moving = [];
+function travel(object, speed = 1) { moving.push({ object, speed }); return object; }
+for (let i = 0; i < 30; i++) travel(box(scene, M.stripe, [i * 3 - 45, .035, .1], [1.15, .012, .055]));
+let seed = 137;
+function rand() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+for (let i = 0; i < 44; i++) {
+  const x = -45 + i * 2.1;
+  const z = i % 2 ? 3.1 + rand() * 5 : -3.2 - rand() * 2.8;
+  const shrub = new THREE.Group(); shrub.position.set(x, 0, z); scene.add(shrub); travel(shrub);
+  if (i % 4 === 0) {
+    const height = 1.3 + rand() * 1.5;
+    rod(shrub, M.trunk, [0, 0, 0], [.12, height, 0], .085);
+    for (let j = 0; j < 3; j++) ellipsoid(shrub, j % 2 ? M.leafLight : M.leaf, [(j - 1) * .32, height + .1 + (j === 1 ? .38 : 0), 0], [.65, .65, .55]);
+  } else {
+    ellipsoid(shrub, M.leafLight, [0, .19, 0], [.35 + rand() * .4, .25 + rand() * .25, .35]);
+    if (i % 3 === 0) for (let j = 0; j < 3; j++) {
+      const dx = (j - 1) * .2;
+      rod(shrub, M.leaf, [dx, 0, .3], [dx, .45 + j * .07, .3], .015);
+      ellipsoid(shrub, M.flower, [dx, .45 + j * .07, .3], [.08, .07, .08]);
+    }
+  }
+}
+for (let i = 0; i < 25; i++) {
+  const wave = box(scene, M.feather, [rand() * 90 - 45, -.015, -16 - rand() * 20], [1 + rand() * 3, .012, .035]);
+  wave.material = mat('#b6d7cb'); travel(wave, .6);
+}
+for (let i = 0; i < 14; i++) {
+  const rock = ellipsoid(scene, M.stone, [rand() * 90 - 45, .08, -5 - rand() * 5], [.2 + rand() * .4, .15, .25]); travel(rock);
+}
+
+const bike = new THREE.Group(); scene.add(bike);
+const R = .8, wheelY = .86, backX = -1.22, frontX = 1.22;
+const wheels = [];
+for (const x of [backX, frontX]) {
+  const wheel = new THREE.Group(); wheel.position.set(x, wheelY, 0); bike.add(wheel); wheels.push(wheel);
+  torus(wheel, M.tire, R, .065, 0, 0, 0);
+  torus(wheel, M.rim, R - .068, .023, 0, 0, 0);
+  for (let i = 0; i < 20; i++) {
+    const a = i / 20 * Math.PI * 2;
+    rod(wheel, M.metal, [0, 0, i % 2 ? .045 : -.045], [Math.cos(a) * .72, Math.sin(a) * .72, 0], .009);
+  }
+  rod(wheel, M.metal, [0, 0, -.14], [0, 0, .14], .075);
+  box(wheel, M.orange, [.48, 0, .018], [.11, .055, .04]);
+}
+const B = [-1.22, wheelY, 0], C = [0, 1.03, 0], S = [-.5, 2.0, 0], H = [.91, 2.03, 0], F = [1.22, wheelY, 0];
+for (const [a,b] of [[B,S],[S,C],[B,C],[S,H],[H,C]]) rod(bike, M.frame, a, b, .05);
+rod(bike, M.lightFrame, [.84, 2.23, 0], [1.26, .86, 0], .047);
+for (const z of [-.11, .11]) rod(bike, M.frame, [.98, 1.66, z], [1.22, .86, z], .03);
+rod(bike, M.metal, [-.5, 1.97, 0], [-.57, 2.25, 0], .033);
+const saddle = ellipsoid(bike, M.seat, [-.57, 2.24, 0], [.29, .075, .20]);
+rod(bike, M.metal, [.88, 2.12, 0], [.87, 2.48, 0], .036);
+rod(bike, M.metal, [.87, 2.48, -.43], [.87, 2.48, .43], .033);
+for (const z of [-.43, .43]) rod(bike, M.seat, [.87, 2.48, z], [.64, 2.5, z], .055);
+ellipsoid(bike, M.metal, [.9, 2.54, -.2], [.07, .045, .07]);
+// Rear rack, headlamp, and a small red tail light.
+for (const z of [-.18,.18]) {
+  rod(bike, M.metal, [-1.5, 1.77, z], [-.79, 1.77, z], .023);
+  rod(bike, M.metal, [-1.42, 1.77, z], [-1.22, .91, z], .018);
+}
+rod(bike, M.metal, [-1.5, 1.77, -.18], [-1.5, 1.77, .18], .025);
+ellipsoid(bike, mat('#dc7352'), [-1.53, 1.74, 0], [.055, .06, .09]);
+ellipsoid(bike, M.metal, [1.04, 1.98, 0], [.14, .1, .11]);
+ellipsoid(bike, M.white, [1.15, 1.98, 0], [.025, .075, .077]);
+
+// A closed chain loop between the rear sprocket and crank ring.
+const chainPoints = [];
+for (let i = 0; i <= 80; i++) {
+  const a = i / 80 * Math.PI * 2;
+  chainPoints.push(new THREE.Vector3(-.61 + .82 * Math.cos(a), 1.00 + .22 * Math.sin(a), .16));
+}
+mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(chainPoints), 100, .018, 6, true), M.black, bike);
+torus(bike, M.metal, .22, .025, 0, 1.03, .18);
+torus(bike, M.metal, .13, .024, backX, wheelY, .18);
+const crank = new THREE.Group(); crank.position.set(0, 1.03, 0); bike.add(crank);
+const pedalRadius = .31;
+const pedals = [];
+for (let i = 0; i < 2; i++) {
+  const sign = i === 0 ? 1 : -1, z = sign * .28;
+  rod(crank, M.metal, [0, 0, z * .65], [sign * pedalRadius, 0, z], .028);
+  const p = new THREE.Group(); bike.add(p); pedals.push(p);
+  box(p, M.black, [0, 0, 0], [.20, .055, .23]);
+}
+
+// Pelican silhouette: broad belly, folded dark-tipped wings, S neck, and long bill.
+const bird = new THREE.Group(); bike.add(bird);
+ellipsoid(bird, M.white, [-.49, 2.79, 0], [.68, .54, .43]);
+ellipsoid(bird, M.feather, [-.18, 2.68, 0], [.43, .37, .36]);
+const tail = ellipsoid(bird, M.white, [-1.14, 2.82, 0], [.43, .14, .25]); tail.rotation.z = -.28;
+for (const sign of [-1, 1]) {
+  const wing = ellipsoid(bird, M.wing, [-.61, 2.84, sign * .35], [.51, .31, .12]); wing.rotation.z = .2;
+  for (let i = 0; i < 5; i++) {
+    const feather = ellipsoid(bird, i > 2 ? M.black : M.feather, [-.84 - i * .055, 2.77 - i * .024, sign * (.385 + i * .005)], [.23, .065, .04]);
+    feather.rotation.z = .28 + i * .07;
+  }
+}
+ellipsoid(bird, M.white, [-.02, 3.05, 0], [.29, .48, .27]).rotation.z = -.3;
+ellipsoid(bird, M.white, [.07, 3.4, 0], [.20, .44, .21]).rotation.z = .18;
+ellipsoid(bird, M.white, [.26, 3.71, 0], [.34, .29, .255]);
+// Flattened tapered cones, rotated so their tips face down the road.
+const bill = mesh(new THREE.ConeGeometry(1, 1, 4), M.bill, bird);
+bill.rotation.z = -Math.PI / 2; bill.rotation.x = Math.PI / 4;
+bill.position.set(.99, 3.65, 0); bill.scale.set(.18, 1.13, .18);
+const pouch = ellipsoid(bird, M.pouch, [.82, 3.49, 0], [.48, .18, .14]); pouch.rotation.z = .10;
+rod(bird, M.orange, [.46, 3.62, .137], [1.48, 3.62, .015], .011);
+rod(bird, M.orange, [.46, 3.62, -.137], [1.48, 3.62, -.015], .011);
+for (const sign of [-1,1]) {
+  ellipsoid(bird, M.iris, [.37, 3.79, sign * .234], [.105, .105, .025]);
+  ellipsoid(bird, M.eye, [.39, 3.80, sign * .255], [.055, .06, .018]);
+  ellipsoid(bird, M.white, [.405, 3.823, sign * .269], [.017, .018, .009]);
+  const brow = ellipsoid(bird, M.white, [.35, 3.89, sign * .224], [.13, .04, .035]); brow.rotation.z = -.12;
+}
+for (let i = 0; i < 3; i++) ellipsoid(bird, M.feather, [.04 - .07 * i, 3.96 + .02 * i, 0], [.14, .035, .10]).rotation.z = -.28;
+// Small forward feathers suggest the wings bracing on the handlebar.
+for (const sign of [-1, 1]) {
+  rod(bird, M.feather, [-.13, 2.97, sign * .30], [.48, 2.58, sign * .4], .085);
+  ellipsoid(bird, M.white, [.61, 2.54, sign * .41], [.21, .075, .09]);
+}
+
+// Each leg is a two-segment IK chain, solved against its actual pedal position.
+const legs = [];
+for (const sign of [1, -1]) {
+  const upper = mesh(cylinderGeo, M.orange, bike);
+  const lower = mesh(cylinderGeo, M.orange, bike);
+  const knee = ellipsoid(bike, M.orange, [0,0,0], [.077,.077,.077]);
+  const foot = new THREE.Group(); bike.add(foot);
+  ellipsoid(foot, M.orange, [.065,.065,0], [.22,.065,.13]);
+  for (let j = -1; j <= 1; j++) ellipsoid(foot, M.bill, [.20,.055,j*.065], [.09,.035,.035]);
+  legs.push({ sign, upper, lower, knee, foot });
+}
+const speed = 3.35;
+const rearSprocketRadius = .13, chainRingRadius = .22;
+const crankSpeed = speed / R * rearSprocketRadius / chainRingRadius;
+let time = 0, paused = false;
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), .05);
+  if (!paused) time += dt;
+  const phase = -time * crankSpeed;
+  crank.rotation.z = phase;
+  const bob = Math.sin(phase * 2) * .035;
+  bird.position.y = bob;
+  bird.rotation.z = Math.sin(phase * 2 + .4) * .012;
+  for (const wheel of wheels) wheel.rotation.z = -time * speed / R;
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i], a = phase + i * Math.PI;
+    const foot = new THREE.Vector3(Math.cos(a) * pedalRadius, 1.03 + Math.sin(a) * pedalRadius + .045, leg.sign * .31);
+    pedals[i].position.set(foot.x, foot.y - .045, foot.z);
+    leg.foot.position.copy(foot);
+    const hip = new THREE.Vector3(-.48, 2.48 + bob, leg.sign * .26);
+    const ankle = foot.clone().add(new THREE.Vector3(-.055, .09, 0));
+    const dx = ankle.x - hip.x, dy = ankle.y - hip.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const l1 = .89, l2 = .88;
+    const along = (l1*l1 - l2*l2 + d*d) / (2*d);
+    const height = Math.sqrt(Math.max(0, l1*l1 - along*along));
+    // Bend knees towards the handlebars, keeping segment lengths constant.
+    const knee = new THREE.Vector3(hip.x + dx/d*along - dy/d*height, hip.y + dy/d*along + dx/d*height, leg.sign * .30);
+    setRod(leg.upper, hip, knee, .065);
+    setRod(leg.lower, knee, ankle, .045);
+    leg.knee.position.copy(knee);
+  }
+  if (!paused) for (const item of moving) {
+    item.object.position.x -= speed * dt * item.speed;
+    if (item.object.position.x < -45) item.object.position.x += 90;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+document.querySelector('#pause').addEventListener('click', () => {
+  paused = !paused;
+  document.querySelector('#pause').textContent = paused ? 'Resume ride' : 'Pause ride';
+});
+document.querySelector('#orbit').addEventListener('click', () => {
+  controls.autoRotate = !controls.autoRotate;
+  document.querySelector('#orbit').textContent = `Auto orbit: ${controls.autoRotate ? 'on' : 'off'}`;
+});
+window.addEventListener('keydown', event => {
+  if (event.code === 'Space' && !['BUTTON','INPUT'].includes(document.activeElement.tagName)) {
+    event.preventDefault(); document.querySelector('#pause').click();
+  }
+});
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+document.querySelector('#status').remove();
+animate();
+</script>
+</body>
+</html>
